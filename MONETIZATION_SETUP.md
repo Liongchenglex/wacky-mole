@@ -23,6 +23,9 @@ This guide explains the Phase 1 monetization implementation and how to configure
 - ✅ Clear value exchange for rewarded videos
 - ✅ Graceful fallbacks if ads fail to load
 
+## Package Used
+We're using `react-native-google-mobile-ads` - the official Google Mobile Ads SDK for React Native.
+
 ## Setup for Production
 
 ### Step 1: Create Google AdMob Account
@@ -90,12 +93,21 @@ const REWARDED_AD_ID = __DEV__
   : 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX'; // Your rewarded ID
 ```
 
-### Step 6: Test with Real Ads
-1. Build your app: `expo build:android` or `expo build:ios`
-2. Install on a real device (not emulator)
-3. Play 3 games to trigger interstitial ad
-4. Verify ads show correctly
-5. Test continue feature
+### Step 6: Rebuild App
+Since we added a native module, you need to rebuild:
+
+```bash
+npx expo prebuild
+npx expo run:ios
+# or
+npx expo run:android
+```
+
+### Step 7: Test with Real Ads
+1. Install on a real device
+2. Play 3 games to trigger interstitial ad
+3. Verify ads show correctly
+4. Test continue feature
 
 ⚠️ **Important**: Real ads may take 24-48 hours to start showing after creating ad units.
 

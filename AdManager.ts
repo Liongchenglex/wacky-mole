@@ -1,13 +1,15 @@
-import {
-  AdMobInterstitial,
-  AdMobRewarded,
-  setTestDeviceIDAsync,
-} from 'expo-ads-admob';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import mobileAds, {
+  InterstitialAd,
+  RewardedAd,
+  RewardedAdEventType,
+  AdEventType,
+  TestIds,
+} from 'react-native-google-mobile-ads';
 
 // Test Ad Unit IDs (use these during development)
-const TEST_INTERSTITIAL_AD_ID = 'ca-app-pub-3940256099942544/1033173712';
-const TEST_REWARDED_AD_ID = 'ca-app-pub-3940256099942544/5224354917';
+const TEST_INTERSTITIAL_AD_ID = TestIds.INTERSTITIAL;
+const TEST_REWARDED_AD_ID = TestIds.REWARDED;
 
 // TODO: Replace with your actual Ad Unit IDs before production
 // Get these from https://apps.admob.com
@@ -24,15 +26,41 @@ const INTERSTITIAL_FREQUENCY = 3; // Show ad every 3rd game over
 const MIN_TIME_BETWEEN_ADS = 90000; // 90 seconds minimum between ads
 
 let lastInterstitialTime = 0;
+let interstitialAd: InterstitialAd | null = null;
+let rewardedAd: RewardedAd | null = null;
 let isInterstitialLoaded = false;
 let isRewardedLoaded = false;
 
 export class AdManager {
   static async initialize(): Promise<void> {
     try {
-      // Set test device ID for development
-      if (__DEV__) {
-        await setTestDeviceIDAsync('EMULATOR');
+      // Initialize Google Mobile Ads SDK
+      await mobileAds().initialize();
+
+      // Create ad instances
+      interstitialAd = InterstitialAd.createForAdRequest(INTERSTITIAL_AD_ID);
+      rewardedAd = RewardedAd.createForAdRequest(REWARDED_AD_ID);
+
+      // Set up interstitial listeners
+      if (interstitialAd) {
+        interstitialAd.addAdEventListener(AdEventType.LOADED, () => {
+          isInterstitialLoaded = true;
+        });
+        interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+          isInterstitialLoaded = false;
+          // Preload next ad
+          this.loadInterstitial();
+        });
+      }
+
+      // Set up rewarded listeners
+      if (rewardedAd) {
+        rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+          isRewardedLoaded = true;
+        });
+        rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+          // Reward will be handled in showRewardedForContinue
+        });
       }
 
       // Preload first interstitial
@@ -47,9 +75,9 @@ export class AdManager {
    */
   static async loadInterstitial(): Promise<void> {
     try {
-      await AdMobInterstitial.setAdUnitID(INTERSTITIAL_AD_ID);
-      await AdMobInterstitial.requestAdAsync({ servePersonalizedAds: true });
-      isInterstitialLoaded = true;
+      if (interstitialAd && !isInterstitialLoaded) {
+        await interstitialAd.load();
+      }
     } catch (error) {
       console.warn('Failed to load interstitial:', error);
       isInterstitialLoaded = false;
@@ -61,9 +89,15 @@ export class AdManager {
    */
   static async loadRewarded(): Promise<void> {
     try {
-      await AdMobRewarded.setAdUnitID(REWARDED_AD_ID);
-      await AdMobRewarded.requestAdAsync({ servePersonalizedAds: true });
-      isRewardedLoaded = true;
+      if (!rewardedAd) {
+        rewardedAd = RewardedAd.createForAdRequest(REWARDED_AD_ID);
+        rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+          isRewardedLoaded = true;
+        });
+      }
+      if (rewardedAd && !isRewardedLoaded) {
+        await rewardedAd.load();
+      }
     } catch (error) {
       console.warn('Failed to load rewarded ad:', error);
       isRewardedLoaded = false;
@@ -105,16 +139,12 @@ export class AdManager {
     try {
       const shouldShow = await this.shouldShowInterstitial();
 
-      if (!shouldShow || !isInterstitialLoaded) {
+      if (!shouldShow || !isInterstitialLoaded || !interstitialAd) {
         return false;
       }
 
-      await AdMobInterstitial.showAdAsync();
+      await interstitialAd.show();
       lastInterstitialTime = Date.now();
-      isInterstitialLoaded = false;
-
-      // Preload next ad
-      this.loadInterstitial();
 
       return true;
     } catch (error) {
@@ -137,42 +167,41 @@ export class AdManager {
         await this.loadRewarded();
       }
 
-      if (!isRewardedLoaded) {
+      if (!isRewardedLoaded || !rewardedAd) {
         throw new Error('Rewarded ad not available');
       }
 
-      // Set up reward listener
+      // Create a new rewarded ad instance for this show
+      const showAd = RewardedAd.createForAdRequest(REWARDED_AD_ID);
+      await showAd.load();
+
       return new Promise((resolve) => {
-        const rewardListener = AdMobRewarded.addEventListener(
-          'rewardedVideoUserDidEarnReward',
+        let didEarnReward = false;
+
+        const rewardListener = showAd.addAdEventListener(
+          RewardedAdEventType.EARNED_REWARD,
           () => {
-            // User watched the full ad and earned reward
-            rewardListener.remove();
-            isRewardedLoaded = false;
-            // Preload next rewarded ad
-            this.loadRewarded();
-            resolve(true);
+            didEarnReward = true;
           }
         );
 
-        const closeListener = AdMobRewarded.addEventListener(
-          'rewardedVideoDidDismiss',
+        const closeListener = showAd.addAdEventListener(
+          AdEventType.CLOSED,
           () => {
-            // User closed ad before completing
-            closeListener.remove();
-            rewardListener.remove();
+            rewardListener();
+            closeListener();
             isRewardedLoaded = false;
             // Preload next rewarded ad
             this.loadRewarded();
-            resolve(false);
+            resolve(didEarnReward);
           }
         );
 
         // Show the ad
-        AdMobRewarded.showAdAsync().catch((error) => {
+        showAd.show().catch((error) => {
           console.warn('Failed to show rewarded ad:', error);
-          rewardListener.remove();
-          closeListener.remove();
+          rewardListener();
+          closeListener();
           isRewardedLoaded = false;
           resolve(false);
         });
