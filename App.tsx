@@ -16,6 +16,7 @@ import {
 } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSounds } from './useSounds';
+import { AdManager } from './AdManager';
 
 const GRID_COLUMNS = 4;
 const HOLE_SPACING = 14;
@@ -67,6 +68,8 @@ export default function App() {
   const [gameOver, setGameOver] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [comboHits, setComboHits] = useState(0); // successful hits (0-10)
+  const [showContinueOption, setShowContinueOption] = useState(false);
+  const [isLoadingAd, setIsLoadingAd] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const safeFlipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreRef = useRef(score);
@@ -100,6 +103,9 @@ export default function App() {
       }
     };
     loadBest();
+
+    // Initialize ad system
+    AdManager.initialize();
   }, []);
 
   const clearCycleTimers = () => {
@@ -352,6 +358,18 @@ export default function App() {
       setActiveMoles([]);
       setPressedHoles(new Set());
       clearCycleTimers();
+
+      // Show continue option for first few seconds
+      setShowContinueOption(true);
+
+      // Preload rewarded ad
+      AdManager.preloadRewardedAd();
+
+      // Show interstitial ad after slight delay (1.5 seconds)
+      // This gives player time to see their final score
+      setTimeout(() => {
+        AdManager.showInterstitialAfterGameOver();
+      }, 1500);
     }
   }, [lives, gameOver]);
 
@@ -366,10 +384,38 @@ export default function App() {
     setConsumedHoles(new Set());
     setPressedHoles(new Set());
     setComboHits(0);
+    setShowContinueOption(false);
     setHasStarted(true);
     // Play sound to test audio is working
     playLifeGained();
   }, [playLifeGained]);
+
+  const handleContinueWithAd = useCallback(async () => {
+    setIsLoadingAd(true);
+    try {
+      const adWatched = await AdManager.showRewardedForContinue();
+
+      if (adWatched) {
+        // User watched the ad, grant +2 lives and continue game
+        setLives(2);
+        setGameOver(false);
+        setShowContinueOption(false);
+        playLifeGained();
+      } else {
+        // User didn't complete the ad
+        setShowContinueOption(false);
+      }
+    } catch (error) {
+      console.warn('Continue with ad failed:', error);
+      setShowContinueOption(false);
+    } finally {
+      setIsLoadingAd(false);
+    }
+  }, [playLifeGained]);
+
+  const handleSkipContinue = useCallback(() => {
+    setShowContinueOption(false);
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -557,11 +603,32 @@ export default function App() {
                 <Text style={styles.gameOverStat}>Score: {score}</Text>
                 <Text style={styles.gameOverStat}>Best: {bestScore}</Text>
               </View>
-              <GestureDetector gesture={Gesture.Tap().onEnd(startGame)}>
-                <View style={styles.restartButton}>
-                  <Text style={styles.restartLabel}>Restart</Text>
+
+              {showContinueOption && (
+                <View style={styles.continueSection}>
+                  <GestureDetector gesture={Gesture.Tap().onEnd(handleContinueWithAd)}>
+                    <View style={[styles.continueButton, isLoadingAd && styles.buttonDisabled]}>
+                      <Text style={styles.continueLabel}>
+                        {isLoadingAd ? 'Loading...' : '▶ Continue (+2 Lives)'}
+                      </Text>
+                      <Text style={styles.continueSubtext}>Watch ad</Text>
+                    </View>
+                  </GestureDetector>
+                  <GestureDetector gesture={Gesture.Tap().onEnd(handleSkipContinue)}>
+                    <View style={styles.skipButton}>
+                      <Text style={styles.skipLabel}>No thanks</Text>
+                    </View>
+                  </GestureDetector>
                 </View>
-              </GestureDetector>
+              )}
+
+              {!showContinueOption && (
+                <GestureDetector gesture={Gesture.Tap().onEnd(startGame)}>
+                  <View style={styles.restartButton}>
+                    <Text style={styles.restartLabel}>Restart</Text>
+                  </View>
+                </GestureDetector>
+              )}
             </View>
           </View>
         </Modal>
@@ -907,6 +974,46 @@ const styles = StyleSheet.create({
   comboHint: {
     fontSize: 12,
     color: '#5a6f94',
+    fontWeight: '600',
+  },
+  continueSection: {
+    width: '100%',
+    gap: 10,
+    marginTop: 6,
+  },
+  continueButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  buttonDisabled: {
+    backgroundColor: '#9e9e9e',
+    opacity: 0.6,
+  },
+  continueLabel: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 17,
+  },
+  continueSubtext: {
+    color: '#e8f5e9',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  skipButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  skipLabel: {
+    color: '#5a6f94',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
