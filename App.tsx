@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Modal,
   useWindowDimensions,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -39,9 +40,9 @@ const SPECIAL_SCORE = 50;
 const SPECIAL_HEAL_CHANCE = 0.1;
 const SPECIAL_HARM_CHANCE = 0.3;
 const BEST_SCORE_KEY = 'wacky_mole_best_score';
-const COMBO_HITS_PER_SECTION = 5;
-const COMBO_MISTAKES_TO_DROP = 5;
-const COMBO_MULTIPLIERS = [1, 1.5, 2, 3]; // index = section level (0-3)
+const COMBO_MAX_HITS = 10;
+const COMBO_TIER_1 = 5; // 2x multiplier at 5 hits
+const COMBO_TIER_2 = 10; // 3x multiplier at 10 hits
 
 type ActiveMole = {
   id: number;
@@ -64,9 +65,7 @@ export default function App() {
   const [lives, setLives] = useState(STARTING_LIVES);
   const [gameOver, setGameOver] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [comboHits, setComboHits] = useState(0); // successful hits in current section
-  const [comboMistakes, setComboMistakes] = useState(0); // mistakes accumulator
-  const [comboSection, setComboSection] = useState(0); // current section level (0-3)
+  const [comboHits, setComboHits] = useState(0); // successful hits (0-10)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const safeFlipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreRef = useRef(score);
@@ -76,6 +75,12 @@ export default function App() {
       (step) => value >= step.minScore && value <= step.maxScore
     );
     return entry?.beatMs ?? BEAT_SCHEDULE[BEAT_SCHEDULE.length - 1].beatMs;
+  };
+
+  const getComboMultiplier = (hits: number) => {
+    if (hits >= COMBO_TIER_2) return 3;
+    if (hits >= COMBO_TIER_1) return 2;
+    return 1;
   };
 
   useEffect(() => {
@@ -132,17 +137,8 @@ export default function App() {
           // Hitting gray decoy = mistake
           if (activeMole.type === 'decoy' && !activeMole.isSafe) {
             setLives((prev) => Math.max(0, prev - 1));
-            // Add mistake to combo
-            setComboMistakes((prev) => {
-              const newMistakes = prev + 1;
-              if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
-                // Drop one section
-                setComboSection((s) => Math.max(0, s - 1));
-                setComboHits(0);
-                return 0;
-              }
-              return newMistakes;
-            });
+            // Reduce combo by 1 hit
+            setComboHits((prev) => Math.max(0, prev - 1));
             return;
           }
 
@@ -150,41 +146,17 @@ export default function App() {
           if (activeMole.type === 'harm') {
             setLives((prev) => Math.max(0, prev - 1));
             // Harm mole hit = successful hit for combo
-            setComboHits((prev) => {
-              const newHits = prev + 1;
-              if (newHits >= COMBO_HITS_PER_SECTION && comboSection < 3) {
-                setComboSection((s) => s + 1);
-                return 0;
-              }
-              return newHits;
-            });
-            setComboMistakes(0); // Reset mistakes on success
+            setComboHits((prev) => Math.min(COMBO_MAX_HITS, prev + 1));
           } else if (activeMole.type === 'heal') {
             setLives((prev) => Math.min(STARTING_LIVES, prev + 1));
             // Heal mole hit = successful hit for combo
-            setComboHits((prev) => {
-              const newHits = prev + 1;
-              if (newHits >= COMBO_HITS_PER_SECTION && comboSection < 3) {
-                setComboSection((s) => s + 1);
-                return 0;
-              }
-              return newHits;
-            });
-            setComboMistakes(0); // Reset mistakes on success
+            setComboHits((prev) => Math.min(COMBO_MAX_HITS, prev + 1));
           } else {
-            // Normal mole - apply multiplier
-            const multiplier = COMBO_MULTIPLIERS[comboSection];
+            // Normal mole - apply multiplier based on current combo
+            const multiplier = getComboMultiplier(comboHits);
             setScore((prev) => prev + multiplier);
             // Normal mole hit = successful hit for combo
-            setComboHits((prev) => {
-              const newHits = prev + 1;
-              if (newHits >= COMBO_HITS_PER_SECTION && comboSection < 3) {
-                setComboSection((s) => s + 1);
-                return 0;
-              }
-              return newHits;
-            });
-            setComboMistakes(0); // Reset mistakes on success
+            setComboHits((prev) => Math.min(COMBO_MAX_HITS, prev + 1));
           }
 
           setConsumedHoles((prev) => {
@@ -205,15 +177,8 @@ export default function App() {
         // Wrong hole = mistake
         if (!activeMole) {
           setLives((prev) => Math.max(0, prev - 1));
-          setComboMistakes((prev) => {
-            const newMistakes = prev + 1;
-            if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
-              setComboSection((s) => Math.max(0, s - 1));
-              setComboHits(0);
-              return 0;
-            }
-            return newMistakes;
-          });
+          // Reduce combo by 1 hit
+          setComboHits((prev) => Math.max(0, prev - 1));
         }
         return;
       }
@@ -221,18 +186,11 @@ export default function App() {
       // Empty tap = mistake
       if (lastDespawnAt !== null || lastActiveHoles.length > 0) {
         setLives((prev) => Math.max(0, prev - 1));
-        setComboMistakes((prev) => {
-          const newMistakes = prev + 1;
-          if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
-            setComboSection((s) => Math.max(0, s - 1));
-            setComboHits(0);
-            return 0;
-          }
-          return newMistakes;
-        });
+        // Reduce combo by 1 hit
+        setComboHits((prev) => Math.max(0, prev - 1));
       }
     },
-    [activeMoles, consumedHoles, gameOver, lastActiveHoles, lastDespawnAt, comboSection]
+    [activeMoles, consumedHoles, gameOver, lastActiveHoles, lastDespawnAt, comboHits]
   );
 
   useEffect(() => {
@@ -342,21 +300,17 @@ export default function App() {
         }
         // Check for missed moles (not including harm moles)
         setActiveMoles((prev) => {
-          const missedNonHarmMoles = prev.filter((mole) => mole.type !== 'harm');
-          if (missedNonHarmMoles.length > 0) {
-            // Penalize combo for each missed mole
-            missedNonHarmMoles.forEach(() => {
-              setComboMistakes((mistakes) => {
-                const newMistakes = mistakes + 1;
-                if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
-                  setComboSection((s) => Math.max(0, s - 1));
-                  setComboHits(0);
-                  return 0;
-                }
-                return newMistakes;
-              });
-            });
-          }
+          setConsumedHoles((consumed) => {
+            const missedNonHarmMoles = prev.filter(
+              (mole) => !consumed.has(mole.id) && mole.type !== 'harm'
+            );
+            if (missedNonHarmMoles.length > 0) {
+              // Reduce combo by 1 hit per missed mole
+              const missCount = missedNonHarmMoles.length;
+              setComboHits((prev) => Math.max(0, prev - missCount));
+            }
+            return consumed;
+          });
           return [];
         });
         setLastDespawnAt(Date.now());
@@ -393,8 +347,6 @@ export default function App() {
     setConsumedHoles(new Set());
     setPressedHoles(new Set());
     setComboHits(0);
-    setComboMistakes(0);
-    setComboSection(0);
     setHasStarted(true);
   }, []);
 
@@ -525,41 +477,26 @@ export default function App() {
 
               {/* Combo Bar */}
               <View style={styles.comboContainer}>
-                <View style={styles.comboBar}>
-                  {[0, 1, 2].map((sectionIndex) => {
-                    const isActive = sectionIndex < comboSection;
-                    const isCurrent = sectionIndex === comboSection;
-                    const fillPercentage = isCurrent
-                      ? (comboHits / COMBO_HITS_PER_SECTION) * 100
-                      : isActive
-                      ? 100
-                      : 0;
-
-                    return (
-                      <View key={sectionIndex} style={styles.comboSection}>
-                        <View
-                          style={[
-                            styles.comboFill,
-                            { width: `${fillPercentage}%` },
-                            isActive && styles.comboFillActive,
-                            isCurrent && styles.comboFillCurrent,
-                          ]}
-                        />
-                        <Text style={styles.comboSectionLabel}>
-                          {COMBO_MULTIPLIERS[sectionIndex + 1]}x
-                        </Text>
-                      </View>
-                    );
-                  })}
+                <View style={styles.comboBarSingle}>
+                  <View
+                    style={[
+                      styles.comboFillSingle,
+                      { width: `${(comboHits / COMBO_MAX_HITS) * 100}%` },
+                      comboHits >= COMBO_TIER_2 && styles.comboFill3x,
+                      comboHits >= COMBO_TIER_1 && comboHits < COMBO_TIER_2 && styles.comboFill2x,
+                    ]}
+                  />
+                  <View style={styles.comboLabels}>
+                    <Text style={styles.comboLabel}>{comboHits}/{COMBO_MAX_HITS}</Text>
+                    <Text style={styles.comboMultiplier}>{getComboMultiplier(comboHits)}x</Text>
+                  </View>
                 </View>
                 <Text style={styles.comboHint}>
-                  {comboSection === 0
-                    ? `${comboHits}/5 hits to 1.5x`
-                    : comboSection === 1
-                    ? `${comboHits}/5 hits to 2x`
-                    : comboSection === 2
-                    ? `${comboHits}/5 hits to 3x`
-                    : 'Max combo! 3x multiplier'}
+                  {comboHits < COMBO_TIER_1
+                    ? `${COMBO_TIER_1 - comboHits} more for 2x`
+                    : comboHits < COMBO_TIER_2
+                    ? `${COMBO_TIER_2 - comboHits} more for 3x`
+                    : 'Max combo!'}
                 </Text>
               </View>
 
@@ -578,27 +515,35 @@ export default function App() {
                   <Text style={styles.harmBannerText}>Red -1 life mole: avoid unless intentional.</Text>
                 </View>
               )}
-
-              {gameOver && (
-                <View style={styles.gameOverCard}>
-                  <Text style={styles.gameOverTitle}>Out of lives</Text>
-                  <Text style={styles.gameOverText}>
-                    Misses and empty taps cost lives. Precision wins.
-                  </Text>
-                  <View style={styles.hudRow}>
-                    <Text style={styles.gameOverStat}>Score: {score}</Text>
-                    <Text style={styles.gameOverStat}>Best: {bestScore}</Text>
-                  </View>
-                  <GestureDetector gesture={Gesture.Tap().onEnd(startGame)}>
-                    <View style={styles.restartButton}>
-                      <Text style={styles.restartLabel}>Restart</Text>
-                    </View>
-                  </GestureDetector>
-                </View>
-              )}
             </>
           )}
         </View>
+
+        {/* Game Over Modal */}
+        <Modal
+          visible={gameOver}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={startGame}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.gameOverModal}>
+              <Text style={styles.gameOverTitle}>Out of lives</Text>
+              <Text style={styles.gameOverText}>
+                Misses and empty taps cost lives. Precision wins.
+              </Text>
+              <View style={styles.hudRow}>
+                <Text style={styles.gameOverStat}>Score: {score}</Text>
+                <Text style={styles.gameOverStat}>Best: {bestScore}</Text>
+              </View>
+              <GestureDetector gesture={Gesture.Tap().onEnd(startGame)}>
+                <View style={styles.restartButton}>
+                  <Text style={styles.restartLabel}>Restart</Text>
+                </View>
+              </GestureDetector>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -832,21 +777,26 @@ const styles = StyleSheet.create({
     color: '#a31212',
     fontWeight: '700',
   },
-  gameOverCard: {
-    marginTop: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    backgroundColor: '#fff4f4',
-    borderRadius: 14,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gameOverModal: {
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#ffd4d4',
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     alignItems: 'center',
-    width: '90%',
-    maxWidth: 420,
+    width: '85%',
+    maxWidth: 380,
   },
   gameOverTitle: {
     fontSize: 20,
@@ -887,42 +837,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  comboBar: {
+  comboBarSingle: {
     width: '100%',
-    flexDirection: 'row',
-    gap: 8,
-    height: 32,
-  },
-  comboSection: {
-    flex: 1,
+    height: 40,
     backgroundColor: '#e7f1ff',
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#cddfff',
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
     position: 'relative',
   },
-  comboFill: {
+  comboFillSingle: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
     backgroundColor: '#d8e4f7',
-    borderRadius: 6,
+    transition: 'width 0.2s ease',
   },
-  comboFillActive: {
-    backgroundColor: '#9bc7ff',
-  },
-  comboFillCurrent: {
+  comboFill2x: {
     backgroundColor: '#6ba3ff',
   },
-  comboSectionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4a638f',
+  comboFill3x: {
+    backgroundColor: '#4c8aff',
+  },
+  comboLabels: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
     zIndex: 1,
+  },
+  comboLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1b2c4d',
+  },
+  comboMultiplier: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1b2c4d',
   },
   comboHint: {
     fontSize: 12,
