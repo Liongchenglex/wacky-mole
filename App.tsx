@@ -39,6 +39,9 @@ const SPECIAL_SCORE = 50;
 const SPECIAL_HEAL_CHANCE = 0.1;
 const SPECIAL_HARM_CHANCE = 0.3;
 const BEST_SCORE_KEY = 'wacky_mole_best_score';
+const COMBO_HITS_PER_SECTION = 5;
+const COMBO_MISTAKES_TO_DROP = 5;
+const COMBO_MULTIPLIERS = [1, 1.5, 2, 3]; // index = section level (0-3)
 
 type ActiveMole = {
   id: number;
@@ -61,6 +64,9 @@ export default function App() {
   const [lives, setLives] = useState(STARTING_LIVES);
   const [gameOver, setGameOver] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [comboHits, setComboHits] = useState(0); // successful hits in current section
+  const [comboMistakes, setComboMistakes] = useState(0); // mistakes accumulator
+  const [comboSection, setComboSection] = useState(0); // current section level (0-3)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const safeFlipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreRef = useRef(score);
@@ -123,17 +129,62 @@ export default function App() {
 
       if (activeMoles.length > 0) {
         if (activeMole && !consumedHoles.has(id)) {
+          // Hitting gray decoy = mistake
           if (activeMole.type === 'decoy' && !activeMole.isSafe) {
             setLives((prev) => Math.max(0, prev - 1));
+            // Add mistake to combo
+            setComboMistakes((prev) => {
+              const newMistakes = prev + 1;
+              if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
+                // Drop one section
+                setComboSection((s) => Math.max(0, s - 1));
+                setComboHits(0);
+                return 0;
+              }
+              return newMistakes;
+            });
             return;
           }
 
+          // Successful hit
           if (activeMole.type === 'harm') {
             setLives((prev) => Math.max(0, prev - 1));
+            // Harm mole hit = successful hit for combo
+            setComboHits((prev) => {
+              const newHits = prev + 1;
+              if (newHits >= COMBO_HITS_PER_SECTION && comboSection < 3) {
+                setComboSection((s) => s + 1);
+                return 0;
+              }
+              return newHits;
+            });
+            setComboMistakes(0); // Reset mistakes on success
           } else if (activeMole.type === 'heal') {
             setLives((prev) => Math.min(STARTING_LIVES, prev + 1));
+            // Heal mole hit = successful hit for combo
+            setComboHits((prev) => {
+              const newHits = prev + 1;
+              if (newHits >= COMBO_HITS_PER_SECTION && comboSection < 3) {
+                setComboSection((s) => s + 1);
+                return 0;
+              }
+              return newHits;
+            });
+            setComboMistakes(0); // Reset mistakes on success
           } else {
-            setScore((prev) => prev + 1);
+            // Normal mole - apply multiplier
+            const multiplier = COMBO_MULTIPLIERS[comboSection];
+            setScore((prev) => prev + multiplier);
+            // Normal mole hit = successful hit for combo
+            setComboHits((prev) => {
+              const newHits = prev + 1;
+              if (newHits >= COMBO_HITS_PER_SECTION && comboSection < 3) {
+                setComboSection((s) => s + 1);
+                return 0;
+              }
+              return newHits;
+            });
+            setComboMistakes(0); // Reset mistakes on success
           }
 
           setConsumedHoles((prev) => {
@@ -151,17 +202,37 @@ export default function App() {
           return;
         }
 
+        // Wrong hole = mistake
         if (!activeMole) {
           setLives((prev) => Math.max(0, prev - 1));
+          setComboMistakes((prev) => {
+            const newMistakes = prev + 1;
+            if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
+              setComboSection((s) => Math.max(0, s - 1));
+              setComboHits(0);
+              return 0;
+            }
+            return newMistakes;
+          });
         }
         return;
       }
 
+      // Empty tap = mistake
       if (lastDespawnAt !== null || lastActiveHoles.length > 0) {
         setLives((prev) => Math.max(0, prev - 1));
+        setComboMistakes((prev) => {
+          const newMistakes = prev + 1;
+          if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
+            setComboSection((s) => Math.max(0, s - 1));
+            setComboHits(0);
+            return 0;
+          }
+          return newMistakes;
+        });
       }
     },
-    [activeMoles, consumedHoles, gameOver, lastActiveHoles, lastDespawnAt]
+    [activeMoles, consumedHoles, gameOver, lastActiveHoles, lastDespawnAt, comboSection]
   );
 
   useEffect(() => {
@@ -269,7 +340,25 @@ export default function App() {
         if (isCancelled) {
           return;
         }
-        setActiveMoles([]);
+        // Check for missed moles (not including harm moles)
+        setActiveMoles((prev) => {
+          const missedNonHarmMoles = prev.filter((mole) => mole.type !== 'harm');
+          if (missedNonHarmMoles.length > 0) {
+            // Penalize combo for each missed mole
+            missedNonHarmMoles.forEach(() => {
+              setComboMistakes((mistakes) => {
+                const newMistakes = mistakes + 1;
+                if (newMistakes >= COMBO_MISTAKES_TO_DROP) {
+                  setComboSection((s) => Math.max(0, s - 1));
+                  setComboHits(0);
+                  return 0;
+                }
+                return newMistakes;
+              });
+            });
+          }
+          return [];
+        });
         setLastDespawnAt(Date.now());
         setPressedHoles(new Set());
         runCycle();
@@ -303,6 +392,9 @@ export default function App() {
     setLastDespawnAt(null);
     setConsumedHoles(new Set());
     setPressedHoles(new Set());
+    setComboHits(0);
+    setComboMistakes(0);
+    setComboSection(0);
     setHasStarted(true);
   }, []);
 
@@ -429,6 +521,46 @@ export default function App() {
                     </GestureDetector>
                   );
                 })}
+              </View>
+
+              {/* Combo Bar */}
+              <View style={styles.comboContainer}>
+                <View style={styles.comboBar}>
+                  {[0, 1, 2].map((sectionIndex) => {
+                    const isActive = sectionIndex < comboSection;
+                    const isCurrent = sectionIndex === comboSection;
+                    const fillPercentage = isCurrent
+                      ? (comboHits / COMBO_HITS_PER_SECTION) * 100
+                      : isActive
+                      ? 100
+                      : 0;
+
+                    return (
+                      <View key={sectionIndex} style={styles.comboSection}>
+                        <View
+                          style={[
+                            styles.comboFill,
+                            { width: `${fillPercentage}%` },
+                            isActive && styles.comboFillActive,
+                            isCurrent && styles.comboFillCurrent,
+                          ]}
+                        />
+                        <Text style={styles.comboSectionLabel}>
+                          {COMBO_MULTIPLIERS[sectionIndex + 1]}x
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={styles.comboHint}>
+                  {comboSection === 0
+                    ? `${comboHits}/5 hits to 1.5x`
+                    : comboSection === 1
+                    ? `${comboHits}/5 hits to 2x`
+                    : comboSection === 2
+                    ? `${comboHits}/5 hits to 3x`
+                    : 'Max combo! 3x multiplier'}
+                </Text>
               </View>
 
               {activeMoles.some((mole) => mole.type === 'decoy') && (
@@ -747,5 +879,54 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  comboContainer: {
+    marginTop: 16,
+    width: '90%',
+    maxWidth: 420,
+    alignItems: 'center',
+    gap: 8,
+  },
+  comboBar: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+    height: 32,
+  },
+  comboSection: {
+    flex: 1,
+    backgroundColor: '#e7f1ff',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#cddfff',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  comboFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#d8e4f7',
+    borderRadius: 6,
+  },
+  comboFillActive: {
+    backgroundColor: '#9bc7ff',
+  },
+  comboFillCurrent: {
+    backgroundColor: '#6ba3ff',
+  },
+  comboSectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4a638f',
+    zIndex: 1,
+  },
+  comboHint: {
+    fontSize: 12,
+    color: '#5a6f94',
+    fontWeight: '600',
   },
 });
