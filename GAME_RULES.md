@@ -28,14 +28,18 @@ There are **4 types of moles** in the game:
   - Tapping during gray phase: -1 life
   - Tapping during orange phase: No penalty (safe)
 - **Unlock**: Score 15+
-- **Spawn Chance**: 35% when unlocked
+- **Spawn Chance**:
+  - 35% at score 15-199
+  - 45% at score 200+
 - **Special Mechanic**: Changes from dangerous to safe at 60% of the beat timer
 
 ### 3. Heal Mole (Green, shows "+1")
 - **Appearance**: Green glow with "+1" label
 - **Effect**: +1 life when tapped (capped at 5 lives max)
 - **Unlock**: Score 50+
-- **Spawn Chance**: 10% when unlocked
+- **Spawn Chance**:
+  - 10% at score 50-399
+  - 3% at score 400+ (significantly reduced for late game difficulty)
 - **Behavior**: Always safe to tap
 
 ### 4. Harm Mole (Red, shows "-1")
@@ -99,8 +103,8 @@ The game speeds up as your score increases. "Beat" refers to the time each mole 
 | 0-14        | 1100 ms           | 1.1 seconds           | Beginner          |
 | 15-24       | 1000 ms           | 1.0 seconds           | Warming Up        |
 | 25-49       | 900 ms            | 0.9 seconds           | Getting Faster    |
-| 50-199      | 800 ms            | 0.8 seconds           | Fast              |
-| 200+        | 700 ms            | 0.7 seconds           | Maximum Speed     |
+| 50-149      | 800 ms            | 0.8 seconds           | Fast              |
+| 150+        | 700 ms            | 0.7 seconds           | Maximum Speed     |
 
 ### Safe Phase Timing (for Decoy Moles)
 - Decoy moles turn from gray (dangerous) to orange (safe) at **60% of the beat duration**
@@ -161,7 +165,9 @@ You lose 1 life when:
 | 50    | Speed increases to 0.8 seconds |
 | 50    | Special moles unlock (Heal 10%, Harm 30%) |
 | 150   | Triple moles unlock (50% chance) |
-| 200   | Speed reaches maximum (0.7 seconds) |
+| 150   | Speed reaches maximum (0.7 seconds) |
+| 200   | Decoy moles increase to 45% spawn rate |
+| 400   | Heal moles become rare (3% spawn rate) |
 
 ---
 

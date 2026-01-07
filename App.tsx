@@ -25,8 +25,8 @@ const BEAT_SCHEDULE = [
   { minScore: 0, maxScore: 14, beatMs: 1100 },
   { minScore: 15, maxScore: 24, beatMs: 1000 },
   { minScore: 25, maxScore: 49, beatMs: 900 },
-  { minScore: 50, maxScore: 199, beatMs: 800 },
-  { minScore: 200, maxScore: Infinity, beatMs: 700 },
+  { minScore: 50, maxScore: 149, beatMs: 800 },
+  { minScore: 150, maxScore: Infinity, beatMs: 700 },
 ];
 const STARTING_LIVES = 5;
 const DOUBLE_MOLE_SCORE_LOW = 10;
@@ -36,9 +36,13 @@ const DOUBLE_MOLE_CHANCE_HIGH = 0.8;
 const TRIPLE_MOLE_SCORE = 150;
 const TRIPLE_MOLE_CHANCE = 0.5;
 const DECOY_SCORE = 15;
-const DECOY_CHANCE = 0.35;
+const DECOY_CHANCE_BASE = 0.35;
+const DECOY_CHANCE_HIGH_SCORE = 200;
+const DECOY_CHANCE_HIGH = 0.45;
 const SPECIAL_SCORE = 50;
 const SPECIAL_HEAL_CHANCE = 0.1;
+const SPECIAL_HEAL_SCORE_REDUCED = 400;
+const SPECIAL_HEAL_CHANCE_REDUCED = 0.03;
 const SPECIAL_HARM_CHANCE = 0.3;
 const BEST_SCORE_KEY = 'wacky_mole_best_score';
 const COMBO_MAX_HITS = 10;
@@ -266,9 +270,12 @@ export default function App() {
       let specialType: ActiveMole['type'] | null = null;
       if (scoreRef.current >= SPECIAL_SCORE) {
         const specialRoll = Math.random();
-        if (specialRoll < SPECIAL_HEAL_CHANCE) {
+        const healChance = scoreRef.current >= SPECIAL_HEAL_SCORE_REDUCED
+          ? SPECIAL_HEAL_CHANCE_REDUCED
+          : SPECIAL_HEAL_CHANCE;
+        if (specialRoll < healChance) {
           specialType = 'heal';
-        } else if (specialRoll < SPECIAL_HEAL_CHANCE + SPECIAL_HARM_CHANCE) {
+        } else if (specialRoll < healChance + SPECIAL_HARM_CHANCE) {
           specialType = 'harm';
         }
       }
@@ -281,9 +288,12 @@ export default function App() {
         specialIndex === -1
           ? nextHoles.map((_, idx) => idx)
           : nextHoles.map((_, idx) => idx).filter((idx) => idx !== specialIndex);
+      const decoyChance = scoreRef.current >= DECOY_CHANCE_HIGH_SCORE
+        ? DECOY_CHANCE_HIGH
+        : DECOY_CHANCE_BASE;
       const shouldSpawnDecoy =
         scoreRef.current >= DECOY_SCORE &&
-        Math.random() < DECOY_CHANCE &&
+        Math.random() < decoyChance &&
         decoyEligibleIndices.length > 0;
       const decoyIndex =
         shouldSpawnDecoy && decoyEligibleIndices.length > 0
