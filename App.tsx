@@ -15,6 +15,7 @@ import {
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSounds } from './useSounds';
 
 const GRID_COLUMNS = 4;
 const HOLE_SPACING = 14;
@@ -69,6 +70,7 @@ export default function App() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const safeFlipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreRef = useRef(score);
+  const { playHit, playLifeLost, playLifeGained } = useSounds();
 
   const beatForScore = (value: number) => {
     const entry = BEAT_SCHEDULE.find(
@@ -137,6 +139,7 @@ export default function App() {
           // Hitting gray decoy = mistake
           if (activeMole.type === 'decoy' && !activeMole.isSafe) {
             setLives((prev) => Math.max(0, prev - 1));
+            playLifeLost();
             // Reduce combo by 1 hit
             setComboHits((prev) => Math.max(0, prev - 1));
             return;
@@ -145,18 +148,32 @@ export default function App() {
           // Successful hit
           if (activeMole.type === 'harm') {
             setLives((prev) => Math.max(0, prev - 1));
+            playLifeLost();
             // Harm mole hit = successful hit for combo
-            setComboHits((prev) => Math.min(COMBO_MAX_HITS, prev + 1));
+            setComboHits((prev) => {
+              const newHits = Math.min(COMBO_MAX_HITS, prev + 1);
+              playHit(newHits);
+              return newHits;
+            });
           } else if (activeMole.type === 'heal') {
             setLives((prev) => Math.min(STARTING_LIVES, prev + 1));
+            playLifeGained();
             // Heal mole hit = successful hit for combo
-            setComboHits((prev) => Math.min(COMBO_MAX_HITS, prev + 1));
+            setComboHits((prev) => {
+              const newHits = Math.min(COMBO_MAX_HITS, prev + 1);
+              playHit(newHits);
+              return newHits;
+            });
           } else {
             // Normal mole - apply multiplier based on current combo
             const multiplier = getComboMultiplier(comboHits);
             setScore((prev) => prev + multiplier);
             // Normal mole hit = successful hit for combo
-            setComboHits((prev) => Math.min(COMBO_MAX_HITS, prev + 1));
+            setComboHits((prev) => {
+              const newHits = Math.min(COMBO_MAX_HITS, prev + 1);
+              playHit(newHits);
+              return newHits;
+            });
           }
 
           setConsumedHoles((prev) => {
@@ -177,6 +194,7 @@ export default function App() {
         // Wrong hole = mistake
         if (!activeMole) {
           setLives((prev) => Math.max(0, prev - 1));
+          playLifeLost();
           // Reduce combo by 1 hit
           setComboHits((prev) => Math.max(0, prev - 1));
         }
@@ -186,6 +204,7 @@ export default function App() {
       // Empty tap = mistake
       if (lastDespawnAt !== null || lastActiveHoles.length > 0) {
         setLives((prev) => Math.max(0, prev - 1));
+        playLifeLost();
         // Reduce combo by 1 hit
         setComboHits((prev) => Math.max(0, prev - 1));
       }
@@ -348,7 +367,9 @@ export default function App() {
     setPressedHoles(new Set());
     setComboHits(0);
     setHasStarted(true);
-  }, []);
+    // Play sound to test audio is working
+    playLifeGained();
+  }, [playLifeGained]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
