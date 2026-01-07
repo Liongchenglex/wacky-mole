@@ -15,7 +15,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.wackymole",
-      "buildNumber": "1"
+      "buildNumber": "2",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -32,7 +35,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "placeholder"
+        "projectId": "104d101d-831b-4991-9bdc-dd884c38ea34"
       }
     }
   }
