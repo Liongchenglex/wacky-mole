@@ -50,7 +50,7 @@ const COMBO_MAX_HITS = 10;
 const COMBO_TIER_1 = 5; // 2x multiplier at 5 hits
 const COMBO_TIER_2 = 10; // 3x multiplier at 10 hits
 // Ad configuration
-const GAMES_BETWEEN_INTERSTITIAL_ADS = 2; // Show interstitial ad every 2 games
+const GAMES_BETWEEN_INTERSTITIAL_ADS = 3; // Show interstitial ad every 3 games
 const MAX_CONTINUES_PER_SESSION = 3; // Limit rewarded ad continues
 
 type ActiveMole = {
