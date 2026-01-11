@@ -16,6 +16,7 @@ import {
 } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSounds } from './useSounds';
+import AdManager from './AdManager';
 
 const GRID_COLUMNS = 4;
 const HOLE_SPACING = 14;
@@ -48,6 +49,9 @@ const BEST_SCORE_KEY = 'wacky_mole_best_score';
 const COMBO_MAX_HITS = 10;
 const COMBO_TIER_1 = 5; // 2x multiplier at 5 hits
 const COMBO_TIER_2 = 10; // 3x multiplier at 10 hits
+// Ad configuration
+const GAMES_BETWEEN_INTERSTITIAL_ADS = 2; // Show interstitial ad every 2 games
+const MAX_CONTINUES_PER_SESSION = 3; // Limit rewarded ad continues
 
 type ActiveMole = {
   id: number;
@@ -71,6 +75,8 @@ export default function App() {
   const [gameOver, setGameOver] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [comboHits, setComboHits] = useState(0); // successful hits (0-10)
+  const [gamesPlayed, setGamesPlayed] = useState(0); // Track games for interstitial ads
+  const [continuesUsed, setContinuesUsed] = useState(0); // Track rewarded ad continues
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const safeFlipRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreRef = useRef(score);
@@ -88,6 +94,12 @@ export default function App() {
     if (hits >= COMBO_TIER_1) return 2;
     return 1;
   };
+
+  // Initialize AdMob on app start
+  useEffect(() => {
+    AdManager.initialize();
+    AdManager.loadRewardedAd(); // Preload rewarded ad
+  }, []);
 
   useEffect(() => {
     const loadBest = async () => {
@@ -362,8 +374,20 @@ export default function App() {
       setActiveMoles([]);
       setPressedHoles(new Set());
       clearCycleTimers();
+
+      // Increment games played counter
+      const newGamesPlayed = gamesPlayed + 1;
+      setGamesPlayed(newGamesPlayed);
+
+      // Show interstitial ad every N games
+      if (newGamesPlayed % GAMES_BETWEEN_INTERSTITIAL_ADS === 0) {
+        // Small delay so game over state is visible first
+        setTimeout(() => {
+          AdManager.showInterstitialAd();
+        }, 500);
+      }
     }
-  }, [lives, gameOver]);
+  }, [lives, gameOver, gamesPlayed]);
 
   const startGame = useCallback(() => {
     clearCycleTimers();
@@ -376,9 +400,22 @@ export default function App() {
     setConsumedHoles(new Set());
     setPressedHoles(new Set());
     setComboHits(0);
+    setContinuesUsed(0); // Reset continues for new game
     setHasStarted(true);
     // Play sound to test audio is working
     playLifeGained();
+  }, [playLifeGained]);
+
+  const handleWatchAdToContinue = useCallback(async () => {
+    const rewarded = await AdManager.showRewardedAd();
+    if (rewarded) {
+      // User watched the full ad, grant +1 life
+      setLives(1);
+      setGameOver(false);
+      setContinuesUsed((prev) => prev + 1);
+      playLifeGained();
+      // Game continues from current score
+    }
   }, [playLifeGained]);
 
   return (
@@ -567,6 +604,23 @@ export default function App() {
                 <Text style={styles.gameOverStat}>Score: {score}</Text>
                 <Text style={styles.gameOverStat}>Best: {bestScore}</Text>
               </View>
+
+              {/* Show rewarded ad option if continues are available */}
+              {continuesUsed < MAX_CONTINUES_PER_SESSION && (
+                <>
+                  <GestureDetector gesture={Gesture.Tap().onEnd(handleWatchAdToContinue)}>
+                    <View style={styles.continueButton}>
+                      <Text style={styles.continueLabel}>📺 Watch Ad - Continue (+1 Life)</Text>
+                      <Text style={styles.continueHint}>
+                        {MAX_CONTINUES_PER_SESSION - continuesUsed} continues left
+                      </Text>
+                    </View>
+                  </GestureDetector>
+
+                  <Text style={styles.orText}>or</Text>
+                </>
+              )}
+
               <GestureDetector gesture={Gesture.Tap().onEnd(startGame)}>
                 <View style={styles.restartButton}>
                   <Text style={styles.restartLabel}>Restart</Text>
@@ -849,6 +903,30 @@ const styles = StyleSheet.create({
   gameOverStat: {
     color: '#5a6f94',
     fontWeight: '700',
+  },
+  continueButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  continueLabel: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  continueHint: {
+    color: '#ffffff',
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.9,
+  },
+  orText: {
+    color: '#5a6f94',
+    fontSize: 14,
+    marginVertical: 8,
   },
   restartButton: {
     paddingVertical: 10,
