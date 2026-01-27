@@ -6,26 +6,14 @@ import mobileAds, {
   TestIds,
 } from 'react-native-google-mobile-ads';
 
-// IMPORTANT: Currently using TEST ads for App Store submission
-// Apple reviewers need to see working ads, but AdMob hasn't approved production ads yet.
-//
-// AFTER YOUR APP IS APPROVED BY APPLE AND ADMOB:
-// 1. Uncomment the production code below (lines with PRODUCTION)
-// 2. Comment out the test ads code (lines with TEST ONLY)
-// 3. Submit version 1.0.1 update to App Store
-//
+// Production ad unit IDs - AdMob verified
 const AD_UNIT_IDS = {
-  // TEST ONLY - Remove these lines after AdMob approval:
-  interstitial: TestIds.INTERSTITIAL,
-  rewarded: TestIds.REWARDED,
-
-  // PRODUCTION - Uncomment these lines after AdMob approval:
-  // interstitial: __DEV__
-  //   ? TestIds.INTERSTITIAL // Test ID for development
-  //   : 'ca-app-pub-9162409335136550/4973408819', // Production interstitial ID
-  // rewarded: __DEV__
-  //   ? TestIds.REWARDED // Test ID for development
-  //   : 'ca-app-pub-9162409335136550/3660327142', // Production rewarded ID
+  interstitial: __DEV__
+    ? TestIds.INTERSTITIAL // Test ID for development
+    : 'ca-app-pub-9162409335136550/4973408819', // Production interstitial ID
+  rewarded: __DEV__
+    ? TestIds.REWARDED // Test ID for development
+    : 'ca-app-pub-9162409335136550/3660327142', // Production rewarded ID
 };
 
 class AdManager {

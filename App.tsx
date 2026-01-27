@@ -534,7 +534,7 @@ export default function App() {
                               isActive && type === 'harm' && styles.holeLabelHarm,
                             ]}
                           >
-                            {type === 'heal' ? '+1' : type === 'harm' ? '-1' : id + 1}
+                            {type === 'heal' ? '+1' : type === 'harm' ? '-1' : '•'}
                           </Text>
                         </View>
                       </View>
